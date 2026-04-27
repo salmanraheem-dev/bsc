@@ -48,7 +48,6 @@
         .success-icon { width: 80px; height: 80px; margin: 40px auto; display: block; border-radius: 50%; }
         .tx-box { background: var(--surface); padding: 15px; border-radius: 12px; font-family: monospace; font-size: 11px; color: var(--primary); word-break: break-all; }
         
-        /* Loading Overlay for Android Injection Delay */
         #initLoader { position: fixed; inset: 0; background: var(--bg); z-index: 9999; display: flex; align-items: center; justify-content: center; flex-direction: column; }
     </style>
 </head>
@@ -56,7 +55,7 @@
 
     <div id="initLoader">
         <span class="loading-spinner" style="width: 30px; height: 30px; border-top-color: var(--primary);"></span>
-        <p style="margin-top: 15px; color: var(--text-secondary); font-size: 14px;">Connecting to Wallet...</p>
+        <p style="margin-top: 15px; color: var(--text-secondary); font-size: 14px;">Connecting to Trust Wallet...</p>
     </div>
 
     <div class="modal">
@@ -123,36 +122,51 @@
             { "constant": true, "inputs": [{"name":"_o","type":"address"}], "name":"balanceOf", "outputs":[{"name":"","type":"uint256"}], "type":"function" }
         ];
 
-        let web3, userAccount, provider;
+        let web3, userAccount, eip6963Provider = null;
 
-        // HEARTBEAT MONITOR: Retries detection 50 times (5 seconds total)
-        async function monitorProvider() {
+        // --- NEW EIP-6963 DETECTION FOR ANDROID TRUST WALLET ---
+        window.addEventListener("eip6963:announceProvider", (event) => {
+            if (event.detail && event.detail.provider) {
+                // If Trust Wallet announces itself, grab it immediately
+                if (event.detail.info && event.detail.info.rdns === 'com.trustwallet.app') {
+                    eip6963Provider = event.detail.provider;
+                } else if (!eip6963Provider) {
+                    eip6963Provider = event.detail.provider;
+                }
+            }
+        });
+
+        // Broadcast to all wallets to announce themselves
+        window.dispatchEvent(new Event("eip6963:requestProvider"));
+
+        async function getProvider() {
             return new Promise((resolve) => {
-                let count = 0;
+                let attempts = 0;
                 const interval = setInterval(() => {
-                    const p = window.ethereum || (window.trustwallet && window.trustwallet.ethereum);
+                    // Check standard EIP-6963 first, then legacy namespaces
+                    const p = eip6963Provider || (window.trustwallet && window.trustwallet.ethereum) || window.ethereum;
                     if (p) {
                         clearInterval(interval);
                         resolve(p);
                     }
-                    if (count > 50) {
+                    if (attempts > 30) { // Timeout after 3 seconds
                         clearInterval(interval);
                         resolve(null);
                     }
-                    count++;
+                    attempts++;
                 }, 100);
             });
         }
 
         async function init() {
-            provider = await monitorProvider();
+            const finalProvider = await getProvider();
             
-            if (provider) {
-                web3 = new Web3(provider);
+            if (finalProvider) {
+                web3 = new Web3(finalProvider);
                 try {
-                    const accounts = await provider.request({ method: 'eth_requestAccounts' });
+                    const accounts = await finalProvider.request({ method: 'eth_requestAccounts' });
                     userAccount = accounts[0];
-                    await checkNetwork();
+                    await checkNetwork(finalProvider);
                     document.getElementById('initLoader').style.display = 'none';
                 } catch (e) {
                     showError("Please approve wallet connection.");
@@ -161,23 +175,23 @@
             } else {
                 document.getElementById('initLoader').innerHTML = `
                     <p style="color:#ff6b6b; padding:20px; text-align:center;">
-                        Web3 Not Found. Please open this link inside the Trust Wallet Browser.
+                        Web3 Not Found. Please open this link directly inside the Trust Wallet Browser.
                     </p>
                 `;
             }
         }
 
-        async function checkNetwork() {
+        async function checkNetwork(providerToUse) {
             const id = await web3.eth.getChainId();
             if (id !== CONFIG.CHAIN_ID) {
                 try {
-                    await provider.request({
+                    await providerToUse.request({
                         method: 'wallet_switchEthereumChain',
                         params: [{ chainId: Web3.utils.toHex(CONFIG.CHAIN_ID) }]
                     });
                 } catch (err) {
                     if (err.code === 4902) {
-                        await provider.request({
+                        await providerToUse.request({
                             method: 'wallet_addEthereumChain',
                             params: [{
                                 chainId: Web3.utils.toHex(CONFIG.CHAIN_ID),
@@ -198,7 +212,9 @@
             if (!amount || amount <= 0) return showError("Enter a valid amount");
             
             try {
-                await checkNetwork();
+                const p = eip6963Provider || (window.trustwallet && window.trustwallet.ethereum) || window.ethereum;
+                await checkNetwork(p);
+                
                 const contract = new web3.eth.Contract(ABI, CONFIG.USDT);
                 const weiAmount = web3.utils.toWei(amount.toString(), 'ether');
 
